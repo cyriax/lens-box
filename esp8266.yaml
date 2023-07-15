@@ -1,0 +1,136 @@
+esphome:
+  name: esp8266-d1
+  friendly_name: esp8266-d1
+
+esp8266:
+  board: d1_mini
+
+logger:
+
+api:
+  encryption:
+    key: "XXXXXXXXXXXXXXXXXXXXXX"
+
+ota:
+  password: "XXXXXXXXXXXXXXXXXXXXXX"
+
+web_server:
+  port: 80    
+
+wifi:
+  ssid: "XXXXXXXXXXXXXXXXXXXXXX"
+  password: "XXXXXXXXXXXXXXXXXXXXXX"
+  
+  ap:
+    ssid: "esp8266-d1 fallback"
+    password: "XXXXXXXXXXXXXXXXXXXXXX"
+
+captive_portal:
+    
+display:
+# display current humidity and saturation of the silica on a 7-segment-display
+  - platform: tm1637
+    clk_pin: D6
+    dio_pin: D5
+    update_interval: 30s
+    intensity: 1
+    length: 4
+    lambda: |-
+      static int i = 0;
+      i++;
+      if ((i % 2) == 0)
+        it.printf("H. %2.0f", id(humidity).state);
+      else
+        it.printf("S. %2.0f", id(moisture).state);
+sensor:
+  # basic environment sensors
+  - platform: dht
+    pin: D7
+    model: AM2302
+    temperature:
+      name: "Canon Temperature"
+      id: temperature
+      accuracy_decimals: 1
+      filters:
+        - offset: -3.7
+    humidity:
+      name: "Canon Humidity"
+      id: humidity
+      accuracy_decimals: 1
+      filters:
+        - offset: +6.0
+  - platform: absolute_humidity
+    name: "Canon Humidity Absolute"
+    temperature: temperature
+    humidity: humidity
+    accuracy_decimals: 1
+    icon: 'mdi:water-percent-alert'
+    unit_of_measurement: 'g/m³'
+    state_class: measurement
+  - platform: template
+    name: "Canon  Dew Point"
+    lambda: |-
+      return (243.5*(log(id(humidity).state/100)+((17.67*id(temperature).state)/
+      (243.5+id(temperature).state)))/(17.67-log(id(humidity).state/100)-
+      ((17.67*id(temperature).state)/(243.5+id(temperature).state))));
+    unit_of_measurement: °C
+    update_interval: 60s
+    icon: 'mdi:weather-fog'
+  # weight sensor for 500g of silica
+  - platform: hx711
+    name: "Canon Silica Weight"
+    state_class: measurement
+    device_class: weight
+    id: weight
+    dout_pin: D2
+    clk_pin: D1
+    gain: 128
+    update_interval: 30s
+    filters:
+      - calibrate_linear:
+          - -325800 -> 0
+          -  179300 -> 523
+      - offset: -129.0
+      - median:
+          window_size: 7
+          send_every: 4
+          send_first_at: 3  
+    unit_of_measurement: 'g'
+    icon: "mdi:weight"
+    accuracy_decimals: 1    
+  - platform: template
+    name: "Canon Silica Moisture Content"
+    id: content
+    lambda: |-
+      return id(weight).state - 500.0;
+    update_interval: 10s
+    unit_of_measurement: 'g'
+    device_class: weight 
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: "mdi:water"   
+  - platform: template
+    name: "Canon Silica Saturation"
+    lambda: |-
+      return id(weight).state - 500.0;
+    update_interval: 10s
+    filters:
+      - calibrate_linear:
+          - 0 -> 0
+          - 250 -> 100
+    unit_of_measurement: '%'  
+    device_class: moisture
+    state_class: measurement
+    icon: "mdi:water-percent"
+    accuracy_decimals: 1
+    id: moisture
+binary_sensor:
+  - platform: template
+    device_class: moisture
+    name: "Canon Silica Alert"
+    lambda: |-
+      if (id(moisture).state > 99.9) {
+        return true;
+      } else {
+        return false;
+      }
